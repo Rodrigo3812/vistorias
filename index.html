@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vistorias Realizadas</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+
+        form {
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.2);
+            max-width: 400px;
+        }
+
+        label {
+            display: block;
+            margin-top: 10px;
+        }
+
+        input {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+        }
+
+        button {
+            margin-top: 15px;
+            padding: 10px;
+            background: blue;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: darkblue;
+        }
+
+        h2, h3 {
+            color: #333;
+        }
+
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        li {
+            background: white;
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        img {
+            max-width: 100px;
+            margin-top: 5px;
+            display: block;
+        }
+
+        .delete-btn {
+            background: red;
+            color: white;
+            border: none;
+            padding: 5px;
+            cursor: pointer;
+            margin-top: 5px;
+        }
+
+        .delete-btn:hover {
+            background: darkred;
+        }
+    </style>
+</head>
+<body>
+    <h2>Registro de Vistoria</h2>
+    <form id="vistoriaForm">
+        <label for="codigo">Código do Imóvel:</label>
+        <input type="text" id="codigo" required>
+
+        <label for="dataHora">Data e Hora:</label>
+        <input type="datetime-local" id="dataHora" required>
+
+        <label for="print">Print da Vistoria:</label>
+        <input type="file" id="print" accept="image/*" required>
+
+        <button type="submit">Salvar</button>
+    </form>
+
+    <h3>Registros Salvos</h3>
+    <button onclick="baixarRegistros()">Baixar Registros</button>
+    <ul id="listaRegistros"></ul>
+
+    <script>
+        document.getElementById("vistoriaForm").addEventListener("submit", function (event) {
+            event.preventDefault();
+
+            let codigo = document.getElementById("codigo").value;
+            let dataHora = document.getElementById("dataHora").value;
+            let arquivo = document.getElementById("print").files[0];
+
+            if (arquivo) {
+                let leitor = new FileReader();
+                leitor.onload = function (e) {
+                    let imagemBase64 = e.target.result;
+
+                    let registro = { codigo, dataHora, imagem: imagemBase64 };
+
+                    // Salvar localmente no navegador
+                    let registros = JSON.parse(localStorage.getItem("registros")) || [];
+                    registros.push(registro);
+                    localStorage.setItem("registros", JSON.stringify(registros));
+
+                    exibirRegistros();
+                };
+                leitor.readAsDataURL(arquivo);
+            }
+        });
+
+        // Função para exibir os registros salvos
+        function exibirRegistros() {
+            let lista = document.getElementById("listaRegistros");
+            lista.innerHTML = "";
+
+            let registros = JSON.parse(localStorage.getItem("registros")) || [];
+            
+            registros.forEach((registro, index) => {
+                let item = document.createElement("li");
+                item.innerHTML = `
+                    <strong>Imóvel:</strong> ${registro.codigo} <br>
+                    <strong>Data/Hora:</strong> ${registro.dataHora} <br>
+                    <img src="${registro.imagem}" width="100"><br>
+                    <button class="delete-btn" onclick="removerRegistro(${index})">Remover</button>
+                `;
+                lista.appendChild(item);
+            });
+        }
+
+        // Função para remover um registro
+        function removerRegistro(index) {
+            let registros = JSON.parse(localStorage.getItem("registros")) || [];
+            registros.splice(index, 1);
+            localStorage.setItem("registros", JSON.stringify(registros));
+            exibirRegistros();
+        }
+
+        // Função para baixar os registros como JSON
+        function baixarRegistros() {
+            let registros = localStorage.getItem("registros");
+            if (!registros) {
+                alert("Nenhum registro encontrado.");
+                return;
+            }
+
+            let blob = new Blob([registros], { type: "application/json" });
+            let link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "registros_vistorias.json";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Exibir registros ao carregar a página
+        window.onload = exibirRegistros;
+    </script>
+</body>
+</html>
