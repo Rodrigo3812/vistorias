@@ -1,0 +1,370 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Controle Uber e 99</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      margin: 0;
+      padding: 10px;
+    }
+    .container {
+      max-width: 1000px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px #ccc;
+    }
+    h1 { text-align: center; margin-bottom: 20px; }
+    form, .filtros {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    input, select, button {
+      padding: 10px;
+      font-size: 1em;
+      width: 100%;
+      max-width: 180px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    button {
+      background-color: #28a745;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover { background-color: #218838; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background-color: #343a40;
+      color: white;
+    }
+    .acoes button {
+      margin: 2px;
+      font-size: 0.9em;
+      padding: 5px 10px;
+      border-radius: 5px;
+    }
+    .editar { background-color: #007bff; color: white; border: none; }
+    .excluir { background-color: #dc3545; color: white; border: none; }
+    canvas { margin-top: 30px; max-width: 100%; }
+    @media (max-width: 768px) {
+      table, thead, tbody, th, td, tr { font-size: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Controle Financeiro - Uber e 99</h1>
+
+    <form id="form-financeiro">
+      <input type="hidden" id="editIndex" value="-1">
+      <input type="date" id="data" required />
+      <select id="plataforma" required>
+        <option value="">Selecione</option>
+        <option value="Uber">Uber</option>
+        <option value="99">99</option>
+        <option value="Ambos">Ambos</option>
+      </select>
+      <input type="number" id="ganhos" placeholder="Ganhos (R$)" step="0.01" required />
+      <input type="number" id="gastos" placeholder="Gastos (R$)" step="0.01" required />
+      <button type="submit">Salvar</button>
+    </form>
+
+    <div class="filtros">
+      <select id="filtroMes">
+        <option value="">Todos os meses</option>
+        ${[...Array(12).keys()].map(i => `<option value="${i+1}">${i+1}</option>`).join("")}
+      </select>
+      <select id="filtroAno">
+        <option value="">Todos os anos</option>
+      </select>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Plataforma</th>
+          <th>Ganhos</th>
+          <th>Gastos</th>
+          <th>Bruto</th>
+          <th>Líquido</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="tabela-dados"></tbody>
+      <tfoot id="resumo-tabela">
+        <tr>
+          <th colspan="2">Totais:</th>
+          <th id="total-ganhos">R$ 0,00</th>
+          <th id="total-gastos">R$ 0,00</th>
+          <th id="total-bruto">R$ 0,00</th>
+          <th id="total-liquido">R$ 0,00</th>
+          <th></th>
+        </tr>
+      </tfoot>
+    </table>
+
+    <canvas id="grafico"></canvas>
+
+    <h2 style="margin-top:40px;">Resumo Semanal</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Semana</th>
+          <th>Ano</th>
+          <th>Ganhos Totais (R$)</th>
+          <th>Saldo Líquido (R$)</th>
+        </tr>
+      </thead>
+      <tbody id="tabela-semanal"></tbody>
+    </table>
+  </div>
+
+  <script>
+    let dados = JSON.parse(localStorage.getItem("dadosUber") || "[]");
+
+    const form = document.getElementById("form-financeiro");
+    const tabela = document.getElementById("tabela-dados");
+    const tabelaSemanal = document.getElementById("tabela-semanal");
+    const filtroMes = document.getElementById("filtroMes");
+    const filtroAno = document.getElementById("filtroAno");
+    const graficoCanvas = document.getElementById("grafico");
+    let grafico;
+
+    form.addEventListener("submit", function(e) {
+      e.preventDefault();
+      const editIndex = parseInt(document.getElementById("editIndex").value);
+      const novo = coletarDadosFormulario();
+
+      if (editIndex >= 0) {
+        dados[editIndex] = novo;
+      } else {
+        dados.push(novo);
+      }
+
+      localStorage.setItem("dadosUber", JSON.stringify(dados));
+      form.reset();
+      document.getElementById("editIndex").value = -1;
+      atualizarTabela();
+      atualizarAnosFiltro();
+    });
+
+    function coletarDadosFormulario() {
+      const data = document.getElementById("data").value;
+      const plataforma = document.getElementById("plataforma").value;
+      const ganhos = parseFloat(document.getElementById("ganhos").value);
+      const gastos = parseFloat(document.getElementById("gastos").value);
+      const bruto = ganhos;
+      const liquido = ganhos - gastos;
+      return { data, plataforma, ganhos, gastos, bruto, liquido };
+    }
+
+    function atualizarTabela() {
+      const mes = parseInt(filtroMes.value);
+      const ano = parseInt(filtroAno.value);
+      tabela.innerHTML = "";
+
+      const filtrados = dados.filter((d) => {
+        const dt = new Date(d.data);
+        return (!mes || dt.getMonth() + 1 === mes) &&
+               (!ano || dt.getFullYear() === ano);
+      });
+
+      filtrados.forEach((d, i) => {
+        const index = dados.indexOf(d);
+        tabela.innerHTML += `
+          <tr>
+            <td>${d.data}</td>
+            <td>${d.plataforma}</td>
+            <td>R$ ${d.ganhos.toFixed(2)}</td>
+            <td>R$ ${d.gastos.toFixed(2)}</td>
+            <td>R$ ${d.bruto.toFixed(2)}</td>
+            <td>R$ ${d.liquido.toFixed(2)}</td>
+            <td class="acoes">
+              <button class="editar" onclick="editar(${index})">Editar</button>
+              <button class="excluir" onclick="excluir(${index})">Excluir</button>
+            </td>
+          </tr>`;
+      });
+
+      desenharGrafico(filtrados);
+      calcularResumoSemanal(filtrados);
+      calcularTotais(filtrados);
+    }
+
+    function calcularTotais(lista) {
+      let totalGanhos = 0, totalGastos = 0, totalBruto = 0, totalLiquido = 0;
+
+      lista.forEach(d => {
+        totalGanhos += d.ganhos;
+        totalGastos += d.gastos;
+        totalBruto += d.bruto;
+        totalLiquido += d.liquido;
+      });
+
+      document.getElementById("total-ganhos").textContent = `R$ ${totalGanhos.toFixed(2)}`;
+      document.getElementById("total-gastos").textContent = `R$ ${totalGastos.toFixed(2)}`;
+      document.getElementById("total-bruto").textContent = `R$ ${totalBruto.toFixed(2)}`;
+      document.getElementById("total-liquido").textContent = `R$ ${totalLiquido.toFixed(2)}`;
+    }
+
+    function desenharGrafico(lista) {
+      const plataformas = ["Uber", "99", "Ambos"];
+      const porData = {};
+
+      lista.forEach(d => {
+        const key = d.data;
+        if (!porData[key]) porData[key] = {};
+        if (!porData[key][d.plataforma]) porData[key][d.plataforma] = { ganhos: 0, liquido: 0 };
+        porData[key][d.plataforma].ganhos += d.ganhos;
+        porData[key][d.plataforma].liquido += d.liquido;
+      });
+
+      const datas = Object.keys(porData).sort();
+      const datasets = [];
+
+      plataformas.forEach(plataforma => {
+        const cor = plataforma === "Uber" ? "green" : plataforma === "99" ? "orange" : "purple";
+        const ganhos = datas.map(d => porData[d][plataforma]?.ganhos || 0);
+        const liquido = datas.map(d => porData[d][plataforma]?.liquido || 0);
+
+        datasets.push({
+          label: `Ganhos - ${plataforma}`,
+          data: ganhos,
+          borderColor: cor,
+          backgroundColor: cor,
+          borderWidth: 2,
+          fill: false,
+          tension: 0.3
+        });
+
+        datasets.push({
+          label: `Líquido - ${plataforma}`,
+          data: liquido,
+          borderColor: cor,
+          backgroundColor: cor,
+          borderDash: [5, 5],
+          borderWidth: 1.5,
+          fill: false,
+          tension: 0.3
+        });
+      });
+
+      if (grafico) grafico.destroy();
+
+      grafico = new Chart(graficoCanvas, {
+        type: "line",
+        data: {
+          labels: datas,
+          datasets: datasets
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          stacked: false,
+          plugins: {
+            title: { display: true, text: "Ganhos e Saldos por Plataforma" }
+          },
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    function calcularResumoSemanal(lista) {
+      const semanas = {};
+
+      lista.forEach(d => {
+        const dt = new Date(d.data);
+        const ano = dt.getFullYear();
+        const semana = getNumeroSemana(dt);
+        const chave = `${ano}-S${semana}`;
+
+        if (!semanas[chave]) {
+          semanas[chave] = { ano, semana, ganhos: 0, liquido: 0 };
+        }
+
+        semanas[chave].ganhos += d.ganhos;
+        semanas[chave].liquido += d.liquido;
+      });
+
+      tabelaSemanal.innerHTML = "";
+      Object.values(semanas).sort((a,b) => a.semana - b.semana).forEach(s => {
+        tabelaSemanal.innerHTML += `
+          <tr>
+            <td>Semana ${s.semana}</td>
+            <td>${s.ano}</td>
+            <td>R$ ${s.ganhos.toFixed(2)}</td>
+            <td>R$ ${s.liquido.toFixed(2)}</td>
+          </tr>`;
+      });
+    }
+
+    function getNumeroSemana(data) {
+      const d = new Date(Date.UTC(data.getFullYear(), data.getMonth(), data.getDate()));
+      const diaSemana = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - diaSemana);
+      const anoInicio = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      return Math.ceil((((d - anoInicio) / 86400000) + 1) / 7);
+    }
+
+    function editar(index) {
+      const d = dados[index];
+      document.getElementById("editIndex").value = index;
+      document.getElementById("data").value = d.data;
+      document.getElementById("plataforma").value = d.plataforma;
+      document.getElementById("ganhos").value = d.ganhos;
+      document.getElementById("gastos").value = d.gastos;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function excluir(index) {
+      if (confirm("Deseja realmente excluir este registro?")) {
+        dados.splice(index, 1);
+        localStorage.setItem("dadosUber", JSON.stringify(dados));
+        atualizarTabela();
+      }
+    }
+
+    filtroMes.addEventListener("change", atualizarTabela);
+    filtroAno.addEventListener("change", atualizarTabela);
+
+    atualizarTabela();
+    atualizarAnosFiltro();
+
+    function atualizarAnosFiltro() {
+      const anos = [...new Set(dados.map(d => new Date(d.data).getFullYear()))].sort();
+      filtroAno.innerHTML = '<option value="">Todos os anos</option>';
+      anos.forEach(ano => {
+        const opt = document.createElement("option");
+        opt.value = ano;
+        opt.textContent = ano;
+        filtroAno.appendChild(opt);
+      });
+    }
+  </script>
+</body>
+</html>
